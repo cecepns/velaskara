@@ -10,38 +10,40 @@ import {
   X
 } from 'lucide-react';
 import logoImg from '../../assets/logo.png';
+import { useLanguage } from '../../context/LanguageContext';
 
 export default function Sidebar({ isOpen, toggleSidebar, user, onLogout }) {
+  const { t } = useLanguage();
   const location = useLocation();
   const role = user?.role;
 
   const menuItems = [
     {
-      name: 'Dashboard',
+      name: t('sidebar.dashboard'),
       path: '/dashboard',
       icon: LayoutDashboard,
       roles: ['admin', 'auditor']
     },
     {
-      name: 'Audits',
+      name: t('sidebar.audits'),
       path: '/audits',
       icon: ClipboardCheck,
       roles: ['admin', 'auditor', 'manager']
     },
     {
-      name: 'Criteria Penilaian',
+      name: t('sidebar.criteria'),
       path: '/criteria',
       icon: Settings,
       roles: ['admin']
     },
     {
-      name: 'Outlets',
+      name: t('sidebar.outlets'),
       path: '/outlets',
       icon: Store,
       roles: ['admin']
     },
     {
-      name: 'Kelola User',
+      name: t('sidebar.users'),
       path: '/users',
       icon: Users,
       roles: ['admin']
@@ -122,7 +124,7 @@ export default function Sidebar({ isOpen, toggleSidebar, user, onLogout }) {
             className="flex items-center justify-center space-x-2 w-full px-4 py-3 rounded-xl bg-red-950/40 text-red-300 border border-red-900/30 hover:bg-red-900 hover:text-white transition-all duration-200"
           >
             <LogOut size={16} />
-            <span>Sign Out</span>
+            <span>{t('sidebar.logout')}</span>
           </button>
         </div>
       </aside>

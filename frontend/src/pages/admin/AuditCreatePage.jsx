@@ -17,8 +17,10 @@ import {
 import toast from 'react-hot-toast';
 import { request } from '../../utils/request';
 import { API_ENDPOINTS } from '../../utils/endpoints';
+import { useLanguage } from '../../context/LanguageContext';
 
 export default function AuditCreatePage() {
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const { id } = useParams();
   const [accessToken, setAccessToken] = useState('');
@@ -64,7 +66,8 @@ export default function AuditCreatePage() {
     average_ticket_size: 44672,
 
     // Compliance Answers
-    answers: {} // Keyed by criteria_id: '1'|'0'|'N/A'
+    answers: {}, // Keyed by criteria_id: '1'|'0'|'N/A'
+    notes: {} // Keyed by criteria_id: String
   });
 
   // Fetch Outlets and Criteria Categories
@@ -88,8 +91,10 @@ export default function AuditCreatePage() {
           if (auditRes.success) {
             setAccessToken(auditRes.audit.access_token);
             const answersMap = { ...defaultAnswers };
+            const notesMap = {};
             auditRes.answers.forEach(ans => {
               answersMap[ans.criteria_id] = ans.answer_value;
+              notesMap[ans.criteria_id] = ans.note || '';
             });
 
             let formattedDate = '';
@@ -124,14 +129,16 @@ export default function AuditCreatePage() {
               actual_revenue: auditRes.audit.actual_revenue,
               transaction_count: auditRes.audit.transaction_count,
               average_ticket_size: auditRes.audit.average_ticket_size,
-              answers: answersMap
+              answers: answersMap,
+              notes: notesMap
             });
           }
         } else {
           setFormData(prev => ({
             ...prev,
             outlet_id: outletsRes.data?.[0]?.id || '',
-            answers: defaultAnswers
+            answers: defaultAnswers,
+            notes: {}
           }));
         }
       } catch (err) {
@@ -181,6 +188,16 @@ export default function AuditCreatePage() {
     }));
   };
 
+  const handleNoteChange = (criteriaId, value) => {
+    setFormData(prev => ({
+      ...prev,
+      notes: {
+        ...prev.notes,
+        [criteriaId]: value
+      }
+    }));
+  };
+
   const calculateLiveScore = () => {
     let scoreObtained = 0;
     let scoreMax = 0;
@@ -211,7 +228,8 @@ export default function AuditCreatePage() {
       // Map answer object back to list format for backend API
       const answersList = Object.keys(formData.answers).map(id => ({
         criteria_id: parseInt(id),
-        answer_value: formData.answers[id]
+        answer_value: formData.answers[id],
+        note: formData.notes?.[id] || ''
       }));
 
       const payload = {
@@ -285,11 +303,11 @@ export default function AuditCreatePage() {
       {/* Tabs list */}
       <div className="flex border-b border-gray-200 overflow-x-auto no-scrollbar scroll-smooth">
         {[
-          { id: 1, label: 'Metadata & Info', icon: Store },
-          { id: 2, label: 'Cold Storage', icon: Thermometer },
-          { id: 3, label: 'Espresso Calibration', icon: Coffee },
-          { id: 4, label: 'Financial Performance', icon: Coins },
-          { id: 5, label: 'Compliance Assessment', icon: ClipboardCheck }
+          { id: 1, label: t('auditForm.step_1'), icon: Store },
+          { id: 2, label: t('auditForm.step_2'), icon: Thermometer },
+          { id: 3, label: t('auditForm.step_3'), icon: Coffee },
+          { id: 4, label: t('auditForm.step_4'), icon: Coins },
+          { id: 5, label: t('auditForm.step_5'), icon: ClipboardCheck }
         ].map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -704,42 +722,58 @@ export default function AuditCreatePage() {
                       const curVal = formData.answers[item.id] || '1';
 
                       return (
-                        <div key={item.id} className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                          <div className="space-y-1">
-                            <span className="text-sm font-bold text-gray-800">{item.name}</span>
-                            <div className="flex items-center gap-2">
-                              <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded ${item.weight === 'critical' ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-600'
-                                }`}>
-                                {item.weight} ({item.weight_value} pts)
-                              </span>
+                        <div key={item.id} className="p-4 space-y-3">
+                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div className="space-y-1">
+                              <span className="text-sm font-bold text-gray-800">{item.name}</span>
+                              <div className="flex items-center gap-2">
+                                <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded ${item.weight === 'critical' ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-600'
+                                  }`}>
+                                  {item.weight} ({item.weight_value} pts)
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Radios Option */}
+                            <div className="flex items-center space-x-3 shrink-0">
+                              {[
+                                { label: t('common.yes'), value: '1' },
+                                { label: t('common.no'), value: '0' },
+                                { label: t('common.na'), value: 'N/A' }
+                              ].map((opt) => (
+                                <label
+                                  key={opt.value}
+                                  className={`flex items-center justify-center border px-3 py-1.5 rounded-xl cursor-pointer text-xs font-bold select-none transition-all ${curVal === opt.value
+                                    ? 'bg-coffee-800 text-white border-coffee-800 shadow-sm'
+                                    : 'bg-white text-gray-600 hover:bg-gray-50 border-gray-300'
+                                    }`}
+                                >
+                                  <input
+                                    type="radio"
+                                    name={`criteria_${item.id}`}
+                                    value={opt.value}
+                                    checked={curVal === opt.value}
+                                    onChange={() => handleAnswerChange(item.id, opt.value)}
+                                    className="sr-only"
+                                  />
+                                  {opt.label}
+                                </label>
+                              ))}
                             </div>
                           </div>
 
-                          {/* Radios Option */}
-                          <div className="flex items-center space-x-3 shrink-0">
-                            {[
-                              { label: 'Ya', value: '1' },
-                              { label: 'Tidak', value: '0' },
-                              { label: 'N/A', value: 'N/A' }
-                            ].map((opt) => (
-                              <label
-                                key={opt.value}
-                                className={`flex items-center justify-center border px-3 py-1.5 rounded-xl cursor-pointer text-xs font-bold select-none transition-all ${curVal === opt.value
-                                  ? 'bg-coffee-800 text-white border-coffee-800 shadow-sm'
-                                  : 'bg-white text-gray-600 hover:bg-gray-50 border-gray-300'
-                                  }`}
-                              >
-                                <input
-                                  type="radio"
-                                  name={`criteria_${item.id}`}
-                                  value={opt.value}
-                                  checked={curVal === opt.value}
-                                  onChange={() => handleAnswerChange(item.id, opt.value)}
-                                  className="sr-only"
-                                />
-                                {opt.label}
-                              </label>
-                            ))}
+                          {/* Notes field */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+                              {t('auditForm.notes_label')}
+                            </label>
+                            <input
+                              type="text"
+                              value={formData.notes?.[item.id] || ''}
+                              onChange={(e) => handleNoteChange(item.id, e.target.value)}
+                              placeholder={t('auditForm.notes_placeholder')}
+                              className="block w-full px-3 py-2 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-coffee-600 focus:border-coffee-600 text-xs transition-all"
+                            />
                           </div>
                         </div>
                       );

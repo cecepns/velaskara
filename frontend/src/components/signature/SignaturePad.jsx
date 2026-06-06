@@ -1,7 +1,9 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Trash2, Check, PenTool } from 'lucide-react';
+import { useLanguage } from '../../context/LanguageContext';
 
 export default function SignaturePad({ onSave, onClear }) {
+  const { t } = useLanguage();
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasDrawed, setHasDrawed] = useState(false);
@@ -88,7 +90,7 @@ export default function SignaturePad({ onSave, onClear }) {
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-semibold text-gray-700 flex items-center gap-2">
           <PenTool size={16} className="text-coffee-600" />
-          Tanda Tangan Digital Manager
+          {t('report.signature_title')}
         </span>
         {hasDrawed && (
           <span className="text-xs bg-green-50 text-green-700 font-medium px-2 py-0.5 rounded flex items-center gap-1">
@@ -111,8 +113,7 @@ export default function SignaturePad({ onSave, onClear }) {
         />
         {!hasDrawed && (
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-gray-400">
-            <p className="text-sm">Gambarkan tanda tangan Anda di sini</p>
-            <p className="text-xs mt-1">Dapat menggunakan mouse atau layar sentuh</p>
+            <p className="text-sm">{t('report.sign_prompt')}</p>
           </div>
         )}
       </div>
@@ -122,18 +123,18 @@ export default function SignaturePad({ onSave, onClear }) {
           type="button"
           onClick={clearCanvas}
           disabled={!hasDrawed}
-          className="flex items-center gap-1 px-4 py-2 border border-gray-300 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+          className="flex items-center gap-1 px-4 py-2 border border-gray-300 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
         >
           <Trash2 size={14} />
-          Hapus
+          {t('report.clear_btn')}
         </button>
         <button
           type="button"
           onClick={saveSignature}
           disabled={!hasDrawed}
-          className="flex items-center gap-1 px-4 py-2 bg-coffee-800 text-white rounded-xl text-sm font-medium hover:bg-coffee-900 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition-all"
+          className="flex items-center gap-1 px-4 py-2 bg-coffee-800 text-white rounded-xl text-sm font-medium hover:bg-coffee-900 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition-all cursor-pointer"
         >
-          Simpan Tanda Tangan
+          {t('report.sign_btn')}
         </button>
       </div>
     </div>

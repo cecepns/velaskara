@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { Loader2 } from 'lucide-react';
+import { LanguageProvider } from './context/LanguageContext';
 
 // Layout
 import Sidebar from './components/layout/Sidebar';
@@ -77,77 +78,79 @@ export default function App() {
   }
 
   return (
-    <Router>
-      <Toaster position="top-right" reverseOrder={false} />
-      
-      <Routes>
-        {/* Auth routes */}
-        <Route 
-          path="/login" 
-          element={user ? <Navigate to={user.role === 'manager' ? '/audits' : '/dashboard'} replace /> : <LoginPage onLoginSuccess={handleLoginSuccess} />} 
-        />
-        <Route 
-          path="/manager/login" 
-          element={user ? <Navigate to="/audits" replace /> : <ManagerAccessPage onLoginSuccess={handleLoginSuccess} />} 
-        />
+    <LanguageProvider>
+      <Router>
+        <Toaster position="top-right" reverseOrder={false} />
+        
+        <Routes>
+          {/* Auth routes */}
+          <Route 
+            path="/login" 
+            element={user ? <Navigate to={user.role === 'manager' ? '/audits' : '/dashboard'} replace /> : <LoginPage onLoginSuccess={handleLoginSuccess} />} 
+          />
+          <Route 
+            path="/manager/login" 
+            element={user ? <Navigate to="/audits" replace /> : <ManagerAccessPage onLoginSuccess={handleLoginSuccess} />} 
+          />
 
-        {/* Private Layout wrapper */}
-        <Route
-          path="/*"
-          element={
-            user ? (
-              <div className="min-h-screen bg-gray-50 flex">
-                {/* Sidebar */}
-                <Sidebar 
-                  isOpen={isSidebarOpen} 
-                  toggleSidebar={toggleSidebar} 
-                  user={user} 
-                  onLogout={handleLogout}
-                />
-                
-                {/* Main Content Pane */}
-                <div className="flex-1 flex flex-col min-h-screen lg:pl-64 transition-all duration-300 min-w-0 w-full overflow-x-hidden">
-                  <Header toggleSidebar={toggleSidebar} user={user} />
+          {/* Private Layout wrapper */}
+          <Route
+            path="/*"
+            element={
+              user ? (
+                <div className="min-h-screen bg-gray-50 flex">
+                  {/* Sidebar */}
+                  <Sidebar 
+                    isOpen={isSidebarOpen} 
+                    toggleSidebar={toggleSidebar} 
+                    user={user} 
+                    onLogout={handleLogout}
+                  />
                   
-                  <main className="flex-grow w-full max-w-full min-w-0 overflow-x-hidden">
-                    <Routes>
-                      {/* Shared Routes */}
-                      <Route path="/audits" element={<AuditsPage user={user} />} />
-                      <Route path="/report/:token" element={<ReportViewPage user={user} />} />
+                  {/* Main Content Pane */}
+                  <div className="flex-1 flex flex-col min-h-screen lg:pl-64 transition-all duration-300 min-w-0 w-full overflow-x-hidden">
+                    <Header toggleSidebar={toggleSidebar} user={user} />
+                    
+                    <main className="flex-grow w-full max-w-full min-w-0 overflow-x-hidden">
+                      <Routes>
+                        {/* Shared Routes */}
+                        <Route path="/audits" element={<AuditsPage user={user} />} />
+                        <Route path="/report/:token" element={<ReportViewPage user={user} />} />
 
-                      {/* Admin & Auditor Routes */}
-                      {['admin', 'auditor'].includes(user.role) && (
-                        <>
-                          <Route path="/dashboard" element={<DashboardPage />} />
-                          <Route path="/audits/new" element={<AuditCreatePage />} />
-                        </>
-                      )}
+                        {/* Admin & Auditor Routes */}
+                        {['admin', 'auditor'].includes(user.role) && (
+                          <>
+                            <Route path="/dashboard" element={<DashboardPage />} />
+                            <Route path="/audits/new" element={<AuditCreatePage />} />
+                          </>
+                        )}
 
-                      {/* Admin Only Routes */}
-                      {user.role === 'admin' && (
-                        <>
-                          <Route path="/criteria" element={<CriteriaPage />} />
-                          <Route path="/outlets" element={<OutletsPage />} />
-                          <Route path="/users" element={<UsersPage />} />
-                          <Route path="/audits/edit/:id" element={<AuditCreatePage />} />
-                        </>
-                      )}
+                        {/* Admin Only Routes */}
+                        {user.role === 'admin' && (
+                          <>
+                            <Route path="/criteria" element={<CriteriaPage />} />
+                            <Route path="/outlets" element={<OutletsPage />} />
+                            <Route path="/users" element={<UsersPage />} />
+                            <Route path="/audits/edit/:id" element={<AuditCreatePage />} />
+                          </>
+                        )}
 
-                      {/* Fallback inside dashboard */}
-                      <Route 
-                        path="*" 
-                        element={<Navigate to={user.role === 'manager' ? '/audits' : '/dashboard'} replace />} 
-                      />
-                    </Routes>
-                  </main>
+                        {/* Fallback inside dashboard */}
+                        <Route 
+                          path="*" 
+                          element={<Navigate to={user.role === 'manager' ? '/audits' : '/dashboard'} replace />} 
+                        />
+                      </Routes>
+                    </main>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
-      </Routes>
-    </Router>
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            }
+          />
+        </Routes>
+      </Router>
+    </LanguageProvider>
   );
 }

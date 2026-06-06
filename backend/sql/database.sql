@@ -116,11 +116,21 @@ CREATE TABLE IF NOT EXISTS audit_answers (
   answer_value ENUM('1', '0', 'N/A') NOT NULL, -- 1=Yes, 0=No, N/A
   score_obtained INT NOT NULL, -- weight_value or 0
   score_max INT NOT NULL, -- weight_value or 0 if N/A
+  note TEXT DEFAULT NULL,
   FOREIGN KEY (audit_id) REFERENCES audits(id) ON DELETE CASCADE,
   FOREIGN KEY (criteria_id) REFERENCES criteria(id)
 );
 
--- 7. OTP Tokens Table (For Manager secure access)
+-- 7. Audit Access Control Table (For Managers authorized to view specific audits)
+CREATE TABLE IF NOT EXISTS audit_access (
+  audit_id INT NOT NULL,
+  user_id INT NOT NULL,
+  PRIMARY KEY (audit_id, user_id),
+  FOREIGN KEY (audit_id) REFERENCES audits(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- 8. OTP Tokens Table (For Manager secure access)
 CREATE TABLE IF NOT EXISTS otp_tokens (
   id INT PRIMARY KEY AUTO_INCREMENT,
   email VARCHAR(100) NOT NULL,

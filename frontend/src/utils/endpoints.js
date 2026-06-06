@@ -21,6 +21,7 @@ export const API_ENDPOINTS = {
     REPORT: (token) => `/audits/report/${token}`,
     SIGN: (token) => `/audits/report/${token}/sign`,
     PAY: "/payment/pay",
+    ACCESS: (id) => `/audits/${id}/access`,
   },
   OUTLETS: {
     LIST: "/outlets",

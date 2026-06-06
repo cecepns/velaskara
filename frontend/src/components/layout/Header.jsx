@@ -1,8 +1,11 @@
 import React from 'react';
-import { Menu, User } from 'lucide-react';
+import { Menu, User, Languages } from 'lucide-react';
 import logoImg from '../../assets/logo.png';
+import { useLanguage } from '../../context/LanguageContext';
 
 export default function Header({ toggleSidebar, user }) {
+  const { lang, toggleLanguage, t } = useLanguage();
+
   return (
     <header className="h-16 bg-white border-b border-gray-200 sticky top-0 z-30 px-6 flex items-center justify-between">
       <div className="flex items-center space-x-4">
@@ -17,15 +20,27 @@ export default function Header({ toggleSidebar, user }) {
             <img src={logoImg} alt="Velaskara Logo" className="w-24 h-auto object-contain" />
           </div>
         </div>
-        <h2 className="hidden lg:block font-semibold text-xl text-gray-800 font-display">
-          Operational Excellence & Assessment
+        <h2 className="hidden lg:block font-semibold text-lg text-gray-800 font-display">
+          {t('header.title')}
         </h2>
       </div>
 
       <div className="flex items-center space-x-4">
+        {/* Language Switcher */}
+        <button
+          onClick={toggleLanguage}
+          className="flex items-center gap-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-750 transition-all cursor-pointer shadow-sm select-none"
+          title="Switch Language"
+        >
+          <Languages size={14} className="text-gray-500" />
+          <span className={lang === 'id' ? 'text-coffee-800 font-extrabold' : 'text-gray-400 font-normal'}>ID</span>
+          <span className="text-gray-300">/</span>
+          <span className={lang === 'en' ? 'text-coffee-800 font-extrabold' : 'text-gray-400 font-normal'}>EN</span>
+        </button>
+
         {user?.role === 'manager' && user?.outlet_id && (
           <span className="bg-coffee-100 text-coffee-800 text-xs px-3 py-1 rounded-full font-medium">
-            Velaskara Outlet Manager
+            {t('header.manager_tag')}
           </span>
         )}
         <div className="flex items-center space-x-2">

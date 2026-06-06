@@ -141,6 +141,124 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// Request OTP (For Manager Secure Access)
+app.post('/api/auth/manager/request-otp', async (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    return res.status(400).json({ success: false, message: 'Email is required' });
+  }
+
+  try {
+    // 1. Check if user exists and is a manager
+    const [userRows] = await pool.query('SELECT * FROM users WHERE email = ? AND role = "manager"', [email]);
+    if (userRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Manager email not registered' });
+    }
+
+    // 2. Generate 6-digit numeric OTP code
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresMinutes = parseInt(process.env.OTP_EXPIRES_MINUTES || '10');
+    const expiresAt = new Date(Date.now() + expiresMinutes * 60000);
+
+    // 3. Save to otp_tokens table
+    await pool.query(
+      'INSERT INTO otp_tokens (email, otp_code, expires_at) VALUES (?, ?, ?)',
+      [email, otpCode, expiresAt]
+    );
+
+    // 4. Send email if configuration exists (TEMPORARILY DISABLED)
+    /*
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      try {
+        const transporter = getMailTransporter();
+        const mailOptions = {
+          from: process.env.EMAIL_FROM || '"Velaskara Kopay" <your_email@gmail.com>',
+          to: email,
+          subject: '[Velaskara Audit] Kode OTP Akses Manager',
+          html: `
+            <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #ddd; border-radius: 8px; max-width: 600px; margin: auto;">
+              <h2 style="color: #6d4c41; text-align: center;">Velaskara Kopay</h2>
+              <h3 style="color: #3e2723; text-align: center; border-bottom: 2px solid #6d4c41; padding-bottom: 10px;">Kode OTP Akses Manager</h3>
+              <p>Halo Manager,</p>
+              <p>Berikut adalah kode OTP untuk login ke Sistem Audit Velaskara Kopay Anda:</p>
+              <div style="text-align: center; margin: 30px 0;">
+                <span style="font-size: 32px; font-weight: bold; tracking: 5px; background: #f5f5f5; padding: 10px 20px; border-radius: 8px; border: 1px solid #ddd; font-family: monospace;">\${otpCode}</span>
+              </div>
+              <p>Kode OTP ini berlaku selama <strong>\${expiresMinutes} menit</strong>. Jangan bagikan kode ini kepada siapa pun.</p>
+              <p style="font-size: 12px; color: #888; text-align: center; margin-top: 30px; border-top: 1px solid #eee; padding-top: 10px;">Laporan Audit Operasional & Kepatuhan Velaskara</p>
+            </div>
+          `
+        };
+        await transporter.sendMail(mailOptions);
+        console.log(`OTP sent to manager: \${email}`);
+      } catch (mailErr) {
+        console.error('Failed to send OTP email:', mailErr);
+      }
+    }
+    */
+
+    // Always return the OTP in response in dev/test mode for manual login helper
+    res.json({
+      success: true,
+      message: 'OTP code sent successfully',
+      otp_code: otpCode
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Server error during OTP request' });
+  }
+});
+
+// Verify OTP & Generate Token
+app.post('/api/auth/manager/verify-otp', async (req, res) => {
+  const { email, otp_code } = req.body;
+  if (!email || !otp_code) {
+    return res.status(400).json({ success: false, message: 'Email and OTP code are required' });
+  }
+
+  try {
+    // 1. Fetch active unused OTP code
+    const [otpRows] = await pool.query(
+      'SELECT * FROM otp_tokens WHERE email = ? AND otp_code = ? AND is_used = FALSE AND expires_at > NOW() ORDER BY id DESC LIMIT 1',
+      [email, otp_code]
+    );
+
+    if (otpRows.length === 0) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired OTP code' });
+    }
+
+    const otpToken = otpRows[0];
+
+    // 2. Mark OTP as used
+    await pool.query('UPDATE otp_tokens SET is_used = TRUE WHERE id = ?', [otpToken.id]);
+
+    // 3. Fetch manager details
+    const [userRows] = await pool.query('SELECT * FROM users WHERE email = ? AND role = "manager"', [email]);
+    if (userRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Manager not found' });
+    }
+
+    const user = userRows[0];
+    const token = generateToken(user);
+
+    res.json({
+      success: true,
+      message: 'OTP verified successfully',
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        outlet_id: user.outlet_id
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Server error during OTP verification' });
+  }
+});
+
 
 
 // Get User Profile
@@ -410,6 +528,7 @@ app.post('/api/audits', authenticateToken, requireRole(['admin', 'auditor']), as
     for (const ans of answers) {
       const criteriaId = parseInt(ans.criteria_id);
       const val = ans.answer_value; // '1', '0', 'N/A'
+      const note = ans.note || null;
 
       if (!criteriaMap.has(criteriaId)) continue;
       const weightVal = criteriaMap.get(criteriaId);
@@ -433,7 +552,8 @@ app.post('/api/audits', authenticateToken, requireRole(['admin', 'auditor']), as
         criteria_id: criteriaId,
         answer_value: val,
         score_obtained: scoreObtained,
-        score_max: scoreMax
+        score_max: scoreMax,
+        note: note
       });
     }
 
@@ -471,8 +591,8 @@ app.post('/api/audits', authenticateToken, requireRole(['admin', 'auditor']), as
 
     // 3. Insert into audit_answers
     const insertAnswerQuery = `
-      INSERT INTO audit_answers (audit_id, criteria_id, answer_value, score_obtained, score_max)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO audit_answers (audit_id, criteria_id, answer_value, score_obtained, score_max, note)
+      VALUES (?, ?, ?, ?, ?, ?)
     `;
 
     for (const pAns of preparedAnswers) {
@@ -481,7 +601,8 @@ app.post('/api/audits', authenticateToken, requireRole(['admin', 'auditor']), as
         pAns.criteria_id,
         pAns.answer_value,
         pAns.score_obtained,
-        pAns.score_max
+        pAns.score_max,
+        pAns.note
       ]);
     }
 
@@ -644,6 +765,7 @@ app.put('/api/audits/:id', authenticateToken, requireRole(['admin']), async (req
     for (const ans of answers) {
       const criteriaId = parseInt(ans.criteria_id);
       const val = ans.answer_value;
+      const note = ans.note || null;
 
       if (!criteriaMap.has(criteriaId)) continue;
       const weightVal = criteriaMap.get(criteriaId);
@@ -667,7 +789,8 @@ app.put('/api/audits/:id', authenticateToken, requireRole(['admin']), async (req
         criteria_id: criteriaId,
         answer_value: val,
         score_obtained: scoreObtained,
-        score_max: scoreMax
+        score_max: scoreMax,
+        note: note
       });
     }
 
@@ -703,8 +826,8 @@ app.put('/api/audits/:id', authenticateToken, requireRole(['admin']), async (req
     await connection.query('DELETE FROM audit_answers WHERE audit_id = ?', [id]);
 
     const insertAnswerQuery = `
-      INSERT INTO audit_answers (audit_id, criteria_id, answer_value, score_obtained, score_max)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO audit_answers (audit_id, criteria_id, answer_value, score_obtained, score_max, note)
+      VALUES (?, ?, ?, ?, ?, ?)
     `;
 
     for (const pAns of preparedAnswers) {
@@ -713,7 +836,8 @@ app.put('/api/audits/:id', authenticateToken, requireRole(['admin']), async (req
         pAns.criteria_id,
         pAns.answer_value,
         pAns.score_obtained,
-        pAns.score_max
+        pAns.score_max,
+        pAns.note
       ]);
     }
 
@@ -777,7 +901,7 @@ app.get('/api/audits/:id', authenticateToken, requireRole(['admin', 'auditor']),
       return res.status(404).json({ success: false, message: 'Audit not found' });
     }
     
-    const [answerRows] = await pool.query('SELECT criteria_id, answer_value FROM audit_answers WHERE audit_id = ?', [id]);
+    const [answerRows] = await pool.query('SELECT criteria_id, answer_value, note FROM audit_answers WHERE audit_id = ?', [id]);
     
     res.json({
       success: true,
@@ -808,10 +932,17 @@ app.get('/api/audits', authenticateToken, async (req, res) => {
     `;
     let queryParams = [];
 
-    // Filter by outlet if manager
+    // Filter by access if manager
     if (req.user.role === 'manager') {
-      countQuery += ` AND a.outlet_id = ?`;
-      queryParams.push(req.user.outlet_id);
+      countQuery = `
+        SELECT COUNT(*) as total 
+        FROM audits a
+        JOIN outlets o ON a.outlet_id = o.id
+        JOIN users u ON a.auditor_id = u.id
+        JOIN audit_access ac ON a.id = ac.audit_id
+        WHERE ac.user_id = ?
+      `;
+      queryParams.push(req.user.id);
     } else if (outletId) {
       countQuery += ` AND a.outlet_id = ?`;
       queryParams.push(outletId);
@@ -835,8 +966,15 @@ app.get('/api/audits', authenticateToken, async (req, res) => {
     let selectParams = [];
 
     if (req.user.role === 'manager') {
-      selectQuery += ` AND a.outlet_id = ?`;
-      selectParams.push(req.user.outlet_id);
+      selectQuery = `
+        SELECT a.*, o.name as outlet_name, u.name as auditor_name
+        FROM audits a
+        JOIN outlets o ON a.outlet_id = o.id
+        JOIN users u ON a.auditor_id = u.id
+        JOIN audit_access ac ON a.id = ac.audit_id
+        WHERE ac.user_id = ?
+      `;
+      selectParams.push(req.user.id);
     } else if (outletId) {
       selectQuery += ` AND a.outlet_id = ?`;
       selectParams.push(outletId);
@@ -868,8 +1006,8 @@ app.get('/api/audits', authenticateToken, async (req, res) => {
   }
 });
 
-// Get Audit Report Detail (Accessible via Access Token without full authentication if token is valid, OR via authenticating)
-app.get('/api/audits/report/:token', async (req, res) => {
+// Get Audit Report Detail (Accessible via Access Token, with authentication checks)
+app.get('/api/audits/report/:token', authenticateToken, async (req, res) => {
   const { token } = req.params;
 
   try {
@@ -887,40 +1025,16 @@ app.get('/api/audits/report/:token', async (req, res) => {
     }
 
     const audit = auditRows[0];
-    const threshold = parseInt(process.env.PAYMENT_THRESHOLD || '70');
-    const requiresPayment = audit.compliance_percentage < threshold && !audit.is_paid;
 
-    // Check header for optional authentication token
-    let canBypassGate = false;
-    const authHeader = req.headers['authorization'];
-    if (authHeader) {
-      const jwtToken = authHeader.split(' ')[2] ? authHeader.split(' ')[2] : authHeader.split(' ')[1];
-      if (jwtToken) {
-        try {
-          const decoded = jwt.verify(jwtToken, process.env.JWT_SECRET || 'velaskara_jwt_secret_key_2026_change_this');
-          // Admins & Auditors bypass payment gate
-          if (decoded.role === 'admin' || decoded.role === 'auditor') {
-            canBypassGate = true;
-          }
-        } catch (_) {}
+    // Enforce access control for managers
+    if (req.user.role === 'manager') {
+      const [accessRows] = await pool.query(
+        'SELECT 1 FROM audit_access WHERE audit_id = ? AND user_id = ?',
+        [audit.id, req.user.id]
+      );
+      if (accessRows.length === 0) {
+        return res.status(403).json({ success: false, message: 'Anda tidak memiliki akses ke laporan audit ini' });
       }
-    }
-
-    // If payment is required and user can't bypass, return restricted metadata only
-    if (requiresPayment && !canBypassGate) {
-      return res.json({
-        success: true,
-        payment_required: true,
-        amount: parseInt(process.env.ACCESS_PRICE || '50000'),
-        audit: {
-          id: audit.id,
-          outlet_name: audit.outlet_name,
-          audit_date: audit.audit_date,
-          shift: audit.shift,
-          compliance_percentage: audit.compliance_percentage,
-          is_paid: audit.is_paid
-        }
-      });
     }
 
     // Get answers
@@ -946,25 +1060,18 @@ app.get('/api/audits/report/:token', async (req, res) => {
   }
 });
 
-// Pay Audit Report (Simulate Payment Gateway response)
+// Pay Audit Report (Simulate Payment Gateway response - Mocked)
 app.post('/api/payment/pay', async (req, res) => {
   const { audit_id } = req.body;
-
   if (!audit_id) {
     return res.status(400).json({ success: false, message: 'Audit ID is required' });
   }
-
   try {
     const paymentRef = 'VK-PAY-' + Math.floor(100000 + Math.random() * 900000);
-    const [result] = await pool.query(
+    await pool.query(
       'UPDATE audits SET is_paid = TRUE, payment_ref = ? WHERE id = ?',
       [paymentRef, audit_id]
     );
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, message: 'Audit not found' });
-    }
-
     res.json({
       success: true,
       message: 'Payment simulated successfully',
@@ -977,7 +1084,7 @@ app.post('/api/payment/pay', async (req, res) => {
 });
 
 // Submit Online Signature (From Manager)
-app.post('/api/audits/report/:token/sign', async (req, res) => {
+app.post('/api/audits/report/:token/sign', authenticateToken, async (req, res) => {
   const { token } = req.params;
   const { signature_data, ip_address } = req.body;
 
@@ -993,11 +1100,16 @@ app.post('/api/audits/report/:token/sign', async (req, res) => {
     }
 
     const audit = auditRows[0];
-    const threshold = parseInt(process.env.PAYMENT_THRESHOLD || '70');
-    
-    // Check payment gate
-    if (audit.compliance_percentage < threshold && !audit.is_paid) {
-      return res.status(403).json({ success: false, message: 'Payment required before signing this report' });
+
+    // Enforce access control for managers
+    if (req.user.role === 'manager') {
+      const [accessRows] = await pool.query(
+        'SELECT 1 FROM audit_access WHERE audit_id = ? AND user_id = ?',
+        [audit.id, req.user.id]
+      );
+      if (accessRows.length === 0) {
+        return res.status(403).json({ success: false, message: 'Anda tidak memiliki akses untuk menandatangani laporan ini' });
+      }
     }
 
     // Save signature
@@ -1013,6 +1125,67 @@ app.post('/api/audits/report/:token/sign', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// GET list of managers and access details for an audit (Admin Only)
+app.get('/api/audits/:id/access', authenticateToken, requireRole(['admin']), async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [managers] = await pool.query('SELECT id, name, email FROM users WHERE role = "manager" ORDER BY name ASC');
+    const [access] = await pool.query('SELECT user_id FROM audit_access WHERE audit_id = ?', [id]);
+    const accessIds = new Set(access.map(row => row.user_id));
+
+    const result = managers.map(m => ({
+      id: m.id,
+      name: m.name,
+      email: m.email,
+      has_access: accessIds.has(m.id)
+    }));
+
+    res.json({ success: true, data: result });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Server error fetching audit access list' });
+  }
+});
+
+// POST update manager access for an audit (Admin Only)
+app.post('/api/audits/:id/access', authenticateToken, requireRole(['admin']), async (req, res) => {
+  const { id } = req.params;
+  const { manager_ids } = req.body; // Array of manager user IDs
+
+  if (!Array.isArray(manager_ids)) {
+    return res.status(400).json({ success: false, message: 'manager_ids must be an array' });
+  }
+
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    // Remove existing assignments
+    await connection.query('DELETE FROM audit_access WHERE audit_id = ?', [id]);
+
+    // Insert new assignments
+    if (manager_ids.length > 0) {
+      const insertQuery = 'INSERT INTO audit_access (audit_id, user_id) VALUES (?, ?)';
+      for (const managerId of manager_ids) {
+        await connection.query(insertQuery, [id, managerId]);
+      }
+    }
+
+    await connection.commit();
+    connection.release();
+
+    res.json({ success: true, message: 'Audit access updated successfully' });
+  } catch (err) {
+    if (connection) {
+      await connection.rollback();
+      connection.release();
+    }
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Server error updating audit access' });
   }
 });
 
