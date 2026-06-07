@@ -1221,6 +1221,64 @@ app.post('/api/outlets', authenticateToken, requireRole(['admin']), async (req, 
   }
 });
 
+app.put('/api/outlets/:id', authenticateToken, requireRole(['admin']), async (req, res) => {
+  const { id } = req.params;
+  const { name, address, manager_email } = req.body;
+
+  if (!name || !manager_email) {
+    return res.status(400).json({ success: false, message: 'Outlet name and manager email are required' });
+  }
+
+  try {
+    const [result] = await pool.query(
+      'UPDATE outlets SET name = ?, address = ?, manager_email = ? WHERE id = ?',
+      [name, address || null, manager_email, id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Outlet not found' });
+    }
+
+    res.json({ success: true, message: 'Outlet updated successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+app.delete('/api/outlets/:id', authenticateToken, requireRole(['admin']), async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const [auditRows] = await pool.query('SELECT id FROM audits WHERE outlet_id = ? LIMIT 1', [id]);
+    if (auditRows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Outlet tidak dapat dihapus karena masih memiliki data audit',
+      });
+    }
+
+    const [userRows] = await pool.query('SELECT id FROM users WHERE outlet_id = ? LIMIT 1', [id]);
+    if (userRows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Outlet tidak dapat dihapus karena masih terhubung dengan user manager',
+      });
+    }
+
+    const [result] = await pool.query('DELETE FROM outlets WHERE id = ?', [id]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Outlet not found' });
+    }
+
+    res.json({ success: true, message: 'Outlet deleted successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 
 // ----------------------------------------------------
 // USERS MANAGEMENT ROUTES

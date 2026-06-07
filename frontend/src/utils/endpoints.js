@@ -26,6 +26,8 @@ export const API_ENDPOINTS = {
   OUTLETS: {
     LIST: "/outlets",
     CREATE: "/outlets",
+    UPDATE: (id) => `/outlets/${id}`,
+    DELETE: (id) => `/outlets/${id}`,
   },
   USERS: {
     LIST: "/users",
